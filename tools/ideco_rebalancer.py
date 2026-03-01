@@ -80,7 +80,7 @@ def load_config(config_path: Path) -> dict:
     non_cg = [p for p in products if not p.get("capital_guarantee")]
     holdings_total = sum(p.get("holdings_ratio", 0) for p in non_cg)
     non_monitored = config.get("_non_monitored_holdings", {})
-    non_monitored_total = sum(v.get("ratio", 0) for v in non_monitored.values())
+    non_monitored_total = sum(v.get("ratio", 0) for v in non_monitored.values() if isinstance(v, dict))
     effective_total = holdings_total + non_monitored_total
     if abs(holdings_total) > 0.01 and abs(effective_total - 1.0) > 0.05:
         logger.warning(
@@ -91,7 +91,7 @@ def load_config(config_path: Path) -> dict:
     elif non_monitored:
         logger.info(
             f"holdings_ratio: 監視商品 {holdings_total:.3f} + 非監視 {non_monitored_total:.3f}"
-            f" = {effective_total:.3f}（非監視: {', '.join(v['name'] for v in non_monitored.values())}）"
+            f" = {effective_total:.3f}（非監視: {', '.join(v['name'] for v in non_monitored.values() if isinstance(v, dict))}）"
         )
 
     logger.info(
