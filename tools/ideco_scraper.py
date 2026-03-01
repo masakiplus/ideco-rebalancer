@@ -58,13 +58,19 @@ class RakutenIdecoScraper:
     def fetch_product(self, product_code: str) -> Optional[dict]:
         """
         商品コード（ISIN）を受け取り、価格・リターンデータを返す。
-        失敗時はNoneを返す。
+        まずrequests+BS4を試行し、失敗時はPlaywrightにフォールバック。
         """
         url = BASE_URL.format(code=product_code)
         logger.info(f"取得開始: {product_code}")
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
+                # まず requests+BS4 で試行（軽量・asyncio互換）
+                data = self._fetch_with_requests(url, product_code)
+                if data and data.get("nav") is not None:
+                    return data
+                # BS4で取れなければPlaywrightにフォールバック
+                logger.info(f"BS4でNAV取得失敗、Playwright試行 [{product_code}]")
                 data = self._fetch_with_playwright(url, product_code)
                 if data and data.get("nav") is not None:
                     return data
@@ -99,6 +105,67 @@ class RakutenIdecoScraper:
 
         logger.info(f"取得完了: {len(results)}/{len(product_codes)} 商品")
         return results
+
+    # ----------------------------------------------------------------
+    # requests + BeautifulSoup による取得（軽量・asyncio互換）
+    # ----------------------------------------------------------------
+
+    def _fetch_with_requests(self, url: str, product_code: str) -> Optional[dict]:
+        """requests + BeautifulSoup でデータ取得を試みる"""
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+        except ImportError:
+            logger.debug("requests/bs4 未インストール、スキップ")
+            return None
+
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=20)
+            resp.raise_for_status()
+            resp.encoding = resp.apparent_encoding or "utf-8"
+            soup = BeautifulSoup(resp.text, "lxml")
+            return self._parse_soup(soup, product_code)
+        except Exception as e:
+            logger.debug(f"requests取得失敗 [{product_code}]: {e}")
+            return None
+
+    def _parse_soup(self, soup, product_code: str) -> dict:
+        """BeautifulSoupオブジェクトからデータを抽出する"""
+        # 商品名
+        h1 = soup.find("h1")
+        name = h1.get_text(strip=True) if h1 else product_code
+
+        # テーブルを全取得（Playwright版と同じ構造に変換）
+        table_data = []
+        for tbl in soup.find_all("table"):
+            rows = []
+            for tr in tbl.find_all("tr"):
+                cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
+                rows.append(cells)
+            table_data.append(rows)
+
+        nav = self._extract_nav(table_data)
+        expense_ratio = self._extract_expense_ratio(table_data)
+        return_6m, return_1y = self._extract_period_returns(table_data)
+        monthly_returns = self._extract_monthly_returns(table_data)
+        return_1m = self._calc_compound_return(monthly_returns, 1)
+        return_3m = self._calc_compound_return(monthly_returns, 3)
+
+        if nav is None:
+            logger.debug(f"BS4: NAV取得失敗 {product_code} (テーブル数={len(table_data)})")
+
+        return {
+            "code": product_code,
+            "name": name,
+            "nav": nav,
+            "expense_ratio": expense_ratio,
+            "return_1m": return_1m,
+            "return_3m": return_3m,
+            "return_6m": return_6m,
+            "return_1y": return_1y,
+            "monthly_returns": monthly_returns,
+            "fetched_at": datetime.now().isoformat(),
+        }
 
     # ----------------------------------------------------------------
     # Playwright による取得
