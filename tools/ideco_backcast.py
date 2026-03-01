@@ -303,6 +303,7 @@ def run_core_satellite_simulation(
     core_code = params.get("CORE_PRODUCT", "JP90C000CMK4")
     core_ratio = params.get("CORE_RATIO", 0.70)
     top_n = params.get("TOP_N", 1)
+    exclude_cats = set(params.get("SATELLITE_EXCLUDE_CATEGORIES", []))
 
     months = month_range(start, end)
     holdings = {p["code"]: 0.0 for p in products}
@@ -341,12 +342,13 @@ def run_core_satellite_simulation(
                         holdings[code] = 0.0
                         holdings[core_code] = holdings.get(core_code, 0) + amount
 
-        # Satellite BUY候補選定（Core除く）
+        # Satellite BUY候補選定（Core除く、除外カテゴリ除く）
         satellite_buys = sorted(
             [
                 p
                 for p in products
                 if p["code"] != core_code
+                and p.get("category", "") not in exclude_cats
                 and fund_signals.get(p["code"]) == "BUY"
                 and fund_scores.get(p["code"]) is not None
             ],
@@ -599,6 +601,36 @@ def generate_report(
             f"| {record['month']} | {record['value']:,.0f} | "
             f"{record['gain']:+,.0f} | {core_name} | {sat_names} |"
         )
+
+    # Satellite選択統計
+    sat_counts = {}
+    core_100_count = 0
+    for record in new_strategy:
+        codes = record.get("buy_codes", [])
+        sat_codes = [c for c in codes if c != core_code]
+        if sat_codes:
+            for c in sat_codes:
+                name = code_to_name.get(c, c)
+                sat_counts[name] = sat_counts.get(name, 0) + 1
+        else:
+            core_100_count += 1
+
+    total_months_report = len(new_strategy)
+    lines += [
+        "",
+        "---",
+        "",
+        "## Satellite選択統計",
+        "",
+        f"総月数: {total_months_report}  |  Satellite有り: {total_months_report - core_100_count}ヶ月  |  Core100%: {core_100_count}ヶ月",
+        "",
+        "| Satellite商品 | 選択回数 | 選択率 |",
+        "|---|---:|---:|",
+    ]
+    for name, count in sorted(sat_counts.items(), key=lambda x: -x[1]):
+        lines.append(f"| {name} | {count}回 | {count/total_months_report*100:.1f}% |")
+    if core_100_count > 0:
+        lines.append(f"| （Core 100%） | {core_100_count}回 | {core_100_count/total_months_report*100:.1f}% |")
 
     lines += [
         "",

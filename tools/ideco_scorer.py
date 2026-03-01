@@ -298,15 +298,19 @@ class IDeCoScorer:
         core_code = self.params.get("CORE_PRODUCT", "JP90C000CMK4")
         core_ratio = self.params.get("CORE_RATIO", 0.70)
         top_n = self.params.get("TOP_N", 1)
+        exclude_cats = set(self.params.get("SATELLITE_EXCLUDE_CATEGORIES", []))
 
         core_fund = next((f for f in scored_funds if f["code"] == core_code), None)
 
         # Core以外のBUY候補（スコア降順）
+        # SATELLITE_EXCLUDE_CATEGORIES に含まれるカテゴリは除外
+        # （例: us_equity は Core の developed_equity と高相関のため）
         satellite_buys = [
             f for f in scored_funds
             if f["signal"] == "BUY"
             and not f.get("capital_guarantee", False)
             and f["code"] != core_code
+            and f.get("category", "") not in exclude_cats
         ][:top_n]
 
         result = []
