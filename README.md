@@ -3,7 +3,7 @@
 楽天証券 iDeCo の提供商品から基準価額・リターンを自動取得し、Core-Satellite戦略に基づいて月次の掛金割当変更・スイッチング指示を生成する。
 
 作成日: 2026-02-28
-最終更新: 2026-03-01（新商品2本追加・requestsフォールバック・CS固定バグ修正）
+最終更新: 2026-03-01（Core候補モニタリング・Core比較バックテスト追加）
 
 ---
 
@@ -30,6 +30,7 @@ cd ~/Documents/notes/PRJ/20260228_確定拠出年金_portfolio_rebalancing
 ├── data/
 │   ├── nav_history.json                  ← 月次NAV履歴（MA12計算用・自動更新）
 │   ├── signal_history.json              ← 月次BUY/SELLシグナル履歴（自動更新）
+│   ├── core_monitor_history.json        ← Core候補の連続上回り月数履歴（自動更新）
 │   └── backcast_cache.json              ← バックキャスト用スクレイピングキャッシュ
 ├── tools/
 │   ├── ideco_rebalancer.py               ← メインスクリプト（実行エントリーポイント）
@@ -101,6 +102,10 @@ Gold のみ: 実効信託報酬 = 信託報酬 × 2.0
 - ケース A: 2ヶ月連続 SELL の非Core商品 → 残高全額を Core（たわら先進国株式）へ
 - ケース B: 無効（Core-Satelliteモードでは使用しない）
 
+**Core候補モニタリング**
+
+毎月、Core商品（たわら先進国株式）のスコアと候補商品（楽天S&P500・楽天ACWI）を比較し、候補が連続してCoreを上回った月数を記録する。3ヶ月連続で上回るとレポートに変更提案が表示される。Core商品の実際の変更は `config/ideco_products.json` の `CORE_PRODUCT` を手動で書き換えて実施する（自動切替は行わない）。
+
 詳細は `ref/ideco_strategy_spec.md` を参照。
 
 ---
@@ -147,4 +152,5 @@ uv pip install -r tools/requirements.txt
 
 # バックキャストシミュレーション（再スクレイピング）
 .venv/bin/python3 tools/ideco_backcast.py
+# → Core商品比較セクションにたわら先進国株式 vs 全米・ACWI・S&P500の成績比較が出力される
 ```
