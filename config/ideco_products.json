@@ -21,7 +21,9 @@
     "GOLD_EXPENSE_MULTIPLIER": 2.0,
     "CORE_ABS_MOMENTUM": false,
     "ALLOCATION_METHOD": "equal",
-    "MONTHLY_CONTRIBUTION": 23000
+    "MONTHLY_CONTRIBUTION": 23000,
+    "CORE_CANDIDATES": ["JP90C000Q2U6", "JP90C000Q2W2"],
+    "CORE_CHANGE_MONTHS": 3
   },
   "capital_guarantee_fund": {
     "code": "GUARANTEE",

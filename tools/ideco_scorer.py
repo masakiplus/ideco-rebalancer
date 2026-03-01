@@ -288,43 +288,66 @@ class IDeCoScorer:
         """
         Core-Satellite モードの掛金配分を決定する。
 
-        Core（CORE_PRODUCT）: 常に CORE_RATIO を配分（シグナル不問）
+        CORE_ABS_MOMENTUM=True の場合:
+          Core が SELL（12M<0 等）→ Core 枠も元本保証へ退避
+        CORE_ABS_MOMENTUM=False（または未設定）の場合:
+          Core は BUY/SELL に関わらず常に CORE_RATIO を配分
+
         Satellite（残り商品）: BUY上位 TOP_N 本に (1 - CORE_RATIO) を均等配分
-        Satellite BUYなし: Core に 100% 配分
+        Satellite BUYなし: Core（または元本保証）が 100% を受け取る
 
         Returns:
-            [{"new_ratio": float, "allocation_type": "core"|"satellite", ...}, ...]
+            [{"new_ratio": float, "allocation_type": "core"|"satellite"|"core_escaped", ...}, ...]
         """
         core_code = self.params.get("CORE_PRODUCT", "JP90C000CMK4")
         core_ratio = self.params.get("CORE_RATIO", 0.70)
         top_n = self.params.get("TOP_N", 1)
-        exclude_cats = set(self.params.get("SATELLITE_EXCLUDE_CATEGORIES", []))
+        core_abs_momentum = self.params.get("CORE_ABS_MOMENTUM", False)
 
         core_fund = next((f for f in scored_funds if f["code"] == core_code), None)
+        core_is_buy = (core_fund is not None and core_fund["signal"] == "BUY")
 
         # Core以外のBUY候補（スコア降順）
-        # SATELLITE_EXCLUDE_CATEGORIES に含まれるカテゴリは除外
-        # （例: us_equity は Core の developed_equity と高相関のため）
         satellite_buys = [
             f for f in scored_funds
             if f["signal"] == "BUY"
             and not f.get("capital_guarantee", False)
             and f["code"] != core_code
-            and f.get("category", "") not in exclude_cats
         ][:top_n]
 
         result = []
 
-        if satellite_buys:
-            sat_ratio = round((1.0 - core_ratio) / len(satellite_buys), 4)
-            if core_fund:
-                result.append({**core_fund, "new_ratio": round(core_ratio, 4), "allocation_type": "core"})
-            for f in satellite_buys:
-                result.append({**f, "new_ratio": sat_ratio, "allocation_type": "satellite"})
+        # Core が SELL かつ絶対モメンタムフィルター有効 → Core 枠を元本保証へ
+        use_core = not core_abs_momentum or core_is_buy
+
+        if use_core:
+            # 通常: Core は固定配分
+            if satellite_buys:
+                sat_ratio = round((1.0 - core_ratio) / len(satellite_buys), 4)
+                if core_fund:
+                    result.append({**core_fund, "new_ratio": round(core_ratio, 4), "allocation_type": "core"})
+                for f in satellite_buys:
+                    result.append({**f, "new_ratio": sat_ratio, "allocation_type": "satellite"})
+            else:
+                if core_fund:
+                    result.append({**core_fund, "new_ratio": 1.0, "allocation_type": "core"})
         else:
-            # Satellite BUYなし → Core に 100%
-            if core_fund:
-                result.append({**core_fund, "new_ratio": 1.0, "allocation_type": "core"})
+            # Core SELL → Core 枠を元本保証へ退避
+            cg = self.capital_guarantee
+            logger.info(f"Core({core_code}) SELL → Core枠({core_ratio*100:.0f}%)を元本保証へ退避")
+            if satellite_buys:
+                sat_ratio = round((1.0 - core_ratio) / len(satellite_buys), 4)
+                result.append({
+                    **cg, "code": cg.get("code", "GUARANTEE"),
+                    "new_ratio": round(core_ratio, 4), "allocation_type": "core_escaped",
+                })
+                for f in satellite_buys:
+                    result.append({**f, "new_ratio": sat_ratio, "allocation_type": "satellite"})
+            else:
+                result.append({
+                    **cg, "code": cg.get("code", "GUARANTEE"),
+                    "new_ratio": 1.0, "allocation_type": "core_escaped",
+                })
 
         return result
 
@@ -426,6 +449,86 @@ class IDeCoScorer:
         return case_b
 
     # ----------------------------------------------------------------
+    # Core候補モニタリング
+    # ----------------------------------------------------------------
+
+    def check_core_candidates(self, scored_funds: list[dict], core_monitor_history: dict) -> dict:
+        """
+        Core候補商品がCoreスコアを連続して上回っているか追跡する。
+
+        CORE_CANDIDATES の各商品について:
+          - 今月のスコアが現行CoreスコアをBEATS_COREしているか
+          - 連続何ヶ月上回り続けているか
+          - CORE_CHANGE_MONTHS ヶ月連続で上回ったら変更提案フラグを立てる
+
+        Returns:
+            {
+                "current_core": code,
+                "current_core_name": str,
+                "current_core_score": float,
+                "change_months_threshold": int,
+                "candidates": {
+                    code: {
+                        "name": str,
+                        "score": float,
+                        "beats_core": bool,
+                        "consecutive_beats": int,
+                        "suggest_change": bool,
+                    }
+                }
+            }
+        """
+        candidates = self.params.get("CORE_CANDIDATES", [])
+        change_months = self.params.get("CORE_CHANGE_MONTHS", 3)
+        core_code = self.params.get("CORE_PRODUCT", "JP90C000CMK4")
+
+        fund_by_code = {f["code"]: f for f in scored_funds}
+        core_fund = fund_by_code.get(core_code)
+        core_score = core_fund.get("score") if core_fund else None
+
+        result = {
+            "current_core": core_code,
+            "current_core_name": core_fund.get("name", core_code) if core_fund else core_code,
+            "current_core_score": core_score,
+            "change_months_threshold": change_months,
+            "candidates": {},
+        }
+
+        for code in candidates:
+            if code == core_code:
+                continue
+            fund = fund_by_code.get(code)
+            if not fund:
+                continue
+            score = fund.get("score")
+            beats_core = bool(
+                score is not None and core_score is not None and score > core_score
+            )
+
+            # 連続上回り月数（今月 + 過去の連続）
+            consecutive = 0
+            if beats_core:
+                consecutive = 1
+                for prev_month in sorted(core_monitor_history.keys(), reverse=True):
+                    prev_info = (
+                        core_monitor_history[prev_month].get("candidates", {}).get(code, {})
+                    )
+                    if prev_info.get("beats_core", False):
+                        consecutive += 1
+                    else:
+                        break
+
+            result["candidates"][code] = {
+                "name": fund.get("name", code),
+                "score": score,
+                "beats_core": beats_core,
+                "consecutive_beats": consecutive,
+                "suggest_change": consecutive >= change_months,
+            }
+
+        return result
+
+    # ----------------------------------------------------------------
     # NAV履歴・シグナル履歴の更新
     # ----------------------------------------------------------------
 
@@ -458,6 +561,7 @@ class IDeCoScorer:
         case_a_targets: list[dict],
         case_b_targets: list[dict],
         output_path: str,
+        core_monitor: dict = None,
     ) -> str:
         """月次判定レポートをMarkdown形式で生成する"""
         now = datetime.now()
@@ -510,6 +614,8 @@ class IDeCoScorer:
                 alloc_type = f.get("allocation_type", "")
                 if alloc_type == "core":
                     label = "**Core固定**"
+                elif alloc_type == "core_escaped":
+                    label = "**Core退避→元本保証**"
                 elif alloc_type == "satellite":
                     label = "Satellite"
                 else:
@@ -622,6 +728,49 @@ class IDeCoScorer:
             f"| 配分方法 | {self.params['ALLOCATION_METHOD']} |",
             "",
         ]
+
+        # --- Core候補モニタリング ---
+        if core_monitor and core_monitor.get("candidates"):
+            core_name = core_monitor["current_core_name"]
+            core_score = core_monitor["current_core_score"]
+            threshold = core_monitor["change_months_threshold"]
+            core_score_str = f"{core_score:.4f}" if core_score is not None else "-"
+
+            lines += ["---", "", "## Core候補モニタリング", ""]
+            lines.append(f"現行Core: **{core_name}** / スコア {core_score_str}")
+            lines.append(f"変更提案条件: 候補が **{threshold}ヶ月連続** でCoreスコアを上回ること")
+            lines.append("")
+            lines.append("| 候補商品 | スコア | Core比差 | 連続上回り | 提案 |")
+            lines.append("|---|---:|---:|:---:|:---:|")
+
+            any_suggest = False
+            for code, info in core_monitor["candidates"].items():
+                score = info["score"]
+                diff = (
+                    (score - core_score)
+                    if (score is not None and core_score is not None)
+                    else None
+                )
+                consecutive = info["consecutive_beats"]
+                suggest = info["suggest_change"]
+                if suggest:
+                    any_suggest = True
+                score_str = f"{score:.4f}" if score is not None else "-"
+                diff_str = f"{diff:+.4f}" if diff is not None else "-"
+                filled = min(consecutive, threshold)
+                bar = "▓" * filled + "░" * max(0, threshold - filled)
+                suggest_str = "**⚠ 変更検討**" if suggest else "-"
+                lines.append(
+                    f"| {info['name']} | {score_str} | {diff_str} | "
+                    f"{bar} {consecutive}/{threshold}M | {suggest_str} |"
+                )
+
+            if any_suggest:
+                lines += [
+                    "",
+                    "> ⚠ Core変更候補あり: `config/ideco_products.json` の `CORE_PRODUCT` 変更を検討してください。",
+                ]
+            lines += ["", "---", ""]
 
         # --- データ取得失敗商品 ---
         failed = [f for f in scored_funds if f.get("score") is None and not f.get("capital_guarantee")]

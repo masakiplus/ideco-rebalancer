@@ -539,6 +539,7 @@ def generate_report(
     start: str,
     end: str,
     output_path: Path,
+    core_comparison: dict = None,
 ) -> None:
     old_stats = compute_stats(old_strategy)
     csf_stats = compute_stats(cs_fixed)
@@ -659,6 +660,48 @@ def generate_report(
         lines.append(f"- {p['name']}（{p['code']}、信託報酬 {p['expense_ratio']:.3f}%）")
 
     lines.append("")
+
+    # --- Core商品比較 ---
+    if core_comparison:
+        lines += ["", "---", "", "## Core商品比較", ""]
+
+        fp = core_comparison["full_period"]
+        lines += [
+            f"### フル期間 Core比較（{fp['start']} 〜 {fp['end']}）",
+            "",
+            "| Core商品 | 最終資産額 | 運用益率 | 年率 | MaxDD |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for item in fp["results"]:
+            s = item["stats"]
+            if s:
+                lines.append(
+                    f"| {item['label']} | {s['final_value']:,.0f}円 | "
+                    f"{s['gain_pct']:+.1f}% | {s['annualized_pct']:+.1f}%/年 | {s['max_drawdown_pct']:.1f}% |"
+                )
+        lines += ["", "> Satelliteの選定ロジックは同一。Core商品のみ変更した比較。", ""]
+
+        rp = core_comparison["recent_period"]
+        n = rp.get("n_months", "?")
+        lines += [
+            f"### 直近期間 Core比較（{rp['start']} 〜 {rp['end']}、{n}ヶ月）",
+            "",
+            "| Core商品 | 最終資産額 | 運用益率 | 年率 | MaxDD |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for item in rp["results"]:
+            s = item["stats"]
+            if s:
+                lines.append(
+                    f"| {item['label']} | {s['final_value']:,.0f}円 | "
+                    f"{s['gain_pct']:+.1f}% | {s['annualized_pct']:+.1f}%/年 | {s['max_drawdown_pct']:.1f}% |"
+                )
+        lines += [
+            "",
+            f"> 楽天プラスS&P500・オールカントリーは2023-11以降のデータ（{rp['start']}〜比較）。",
+            "",
+        ]
+
     output_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info(f"レポート生成完了: {output_path}")
 
@@ -791,6 +834,66 @@ def main():
         end=sim_end,
     )
 
+    # Core候補比較 - フル期間（楽天全米株式は全期間データあり）
+    logger.info("Core候補比較（フル期間）: Core=楽天全米株式")
+    cs_core_us = run_core_satellite_simulation(
+        products=products,
+        monthly_contribution=monthly_contribution,
+        params={**new_params, "CORE_PRODUCT": "JP90C000FHD2"},
+        start=SIM_START,
+        end=sim_end,
+        core_abs_momentum=False,
+    )
+
+    # Core候補比較 - 直近期間（楽天プラスS&P500・ACWIはデータが2023-11以降）
+    recent_start = "2024-11"
+    recent_end = "2026-01"
+    logger.info(f"Core候補比較（直近 {recent_start}〜{recent_end}）: 3候補")
+    cs_recent_dev = run_core_satellite_simulation(
+        products=products,
+        monthly_contribution=monthly_contribution,
+        params={**new_params, "CORE_PRODUCT": "JP90C000CMK4"},
+        start=recent_start,
+        end=recent_end,
+        core_abs_momentum=False,
+    )
+    cs_recent_sp500 = run_core_satellite_simulation(
+        products=products,
+        monthly_contribution=monthly_contribution,
+        params={**new_params, "CORE_PRODUCT": "JP90C000Q2U6"},
+        start=recent_start,
+        end=recent_end,
+        core_abs_momentum=False,
+    )
+    cs_recent_acwi = run_core_satellite_simulation(
+        products=products,
+        monthly_contribution=monthly_contribution,
+        params={**new_params, "CORE_PRODUCT": "JP90C000Q2W2"},
+        start=recent_start,
+        end=recent_end,
+        core_abs_momentum=False,
+    )
+    core_comparison = {
+        "full_period": {
+            "start": SIM_START,
+            "end": sim_end,
+            "results": [
+                {"label": "CS固定 / Core=たわら先進国株式（現行・0.099%）", "stats": compute_stats(cs_fixed)},
+                {"label": "CS固定 / Core=楽天全米株式（0.162%）", "stats": compute_stats(cs_core_us)},
+            ],
+        },
+        "recent_period": {
+            "start": recent_start,
+            "end": recent_end,
+            "n_months": len(month_range(recent_start, recent_end)),
+            "results": [
+                {"label": "Core=たわら先進国株式（現行・0.099%）", "stats": compute_stats(cs_recent_dev)},
+                {"label": "Core=楽天プラスS&P500（0.077%）", "stats": compute_stats(cs_recent_sp500)},
+                {"label": "Core=楽天プラスオールカントリー（0.056%）", "stats": compute_stats(cs_recent_acwi)},
+            ],
+        },
+    }
+
     # 結果サマリー
     total_contrib = old_history[-1]["contribution_total"]
     print("\n" + "=" * 70)
@@ -825,6 +928,7 @@ def main():
         start=SIM_START,
         end=sim_end,
         output_path=output_path,
+        core_comparison=core_comparison,
     )
     print(f"\n  レポート: {output_path}")
 

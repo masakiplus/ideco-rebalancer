@@ -48,6 +48,7 @@ PROJECT_DIR = SCRIPT_DIR.parent
 CONFIG_PATH = PROJECT_DIR / "config" / "ideco_products.json"
 SIGNAL_HISTORY_PATH = PROJECT_DIR / "data" / "signal_history.json"
 NAV_HISTORY_PATH = PROJECT_DIR / "data" / "nav_history.json"
+CORE_MONITOR_HISTORY_PATH = PROJECT_DIR / "data" / "core_monitor_history.json"
 OUTPUT_DIR = PROJECT_DIR / "output"
 
 
@@ -172,6 +173,7 @@ def main():
     config = load_config(CONFIG_PATH)
     signal_history = load_json(SIGNAL_HISTORY_PATH, default={})
     nav_history = load_json(NAV_HISTORY_PATH, default={})
+    core_monitor_history = load_json(CORE_MONITOR_HISTORY_PATH, default={})
 
     non_cg_products = [p for p in config["products"] if not p.get("capital_guarantee")]
     product_codes = [p["code"] for p in non_cg_products]
@@ -214,6 +216,9 @@ def main():
         buy_candidates = scorer.select_buy_candidates(scored_funds)
         buy_allocation = scorer.calculate_allocation(buy_candidates)
 
+    # 4b. Core候補モニタリング
+    core_monitor = scorer.check_core_candidates(scored_funds, core_monitor_history)
+
     # 5. スイッチング判定
     case_a = scorer.check_switching_case_a(scored_funds)
     # Core-Satelliteモードでは Case B 不使用
@@ -231,13 +236,22 @@ def main():
     updated_signals = scorer.update_signal_history(scored_funds)
     save_json(SIGNAL_HISTORY_PATH, updated_signals)
 
+    # Core監視履歴を更新（今月のCore vs 候補スコアを記録）
+    current_month = datetime.now().strftime("%Y-%m")
+    updated_core_monitor = {
+        **core_monitor_history,
+        current_month: core_monitor,
+    }
+    save_json(CORE_MONITOR_HISTORY_PATH, updated_core_monitor)
+
     # 7. レポート生成
     OUTPUT_DIR.mkdir(exist_ok=True)
     year_month = datetime.now().strftime("%Y%m")
     output_path = OUTPUT_DIR / f"ideco_report_{year_month}.md"
 
     scorer.generate_report(
-        scored_funds, buy_candidates, buy_allocation, case_a, case_b, str(output_path)
+        scored_funds, buy_candidates, buy_allocation, case_a, case_b, str(output_path),
+        core_monitor=core_monitor,
     )
 
     # 8. サマリー表示
