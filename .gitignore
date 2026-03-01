@@ -1,0 +1,24 @@
+# 個人の運用データ（gitignore対象）
+data/signal_history.json
+data/nav_history.json
+data/backcast_cache.json
+
+# 月次レポート（個人の運用結果）
+output/ideco_report_*.md
+output/ideco_backcast_*.md
+
+# 仮想環境
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE・OS
+.claude/
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# ログ
+*.log

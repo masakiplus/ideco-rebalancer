@@ -1,0 +1,126 @@
+{
+  "_comment": "楽天証券iDeCo提供商品リスト。expense_ratioは年率%(例: 0.2916は0.2916%/年)。holdings_ratioは現在の保有比率(0.0〜1.0)。実際の値は各自で設定してください。",
+  "_non_monitored_holdings": {
+    "_comment": "スクリプト管理外だが保有している商品。スイッチング推奨対象として記録。",
+    "JP90C000FHC4": {"name": "楽天・全世界株式インデックス・ファンド", "ratio": 0.0, "action": "スイッチング推奨→たわらノーロード先進国株式(JP90C000CMK4)。全米+先進国でカバー可・重複。"},
+    "SEZON": {"name": "セゾン・グローバルバランスファンド", "ratio": 0.0, "action": "スイッチング推奨→たわらノーロード先進国株式。残高ほぼゼロ。"}
+  },
+  "parameters": {
+    "STRATEGY_MODE": "core_satellite",
+    "CORE_PRODUCT": "JP90C000CMK4",
+    "CORE_RATIO": 0.70,
+    "TOP_N": 1,
+    "CONSECUTIVE_SELL": 2,
+    "DEVIATION_THRESHOLD": 0.15,
+    "DEVIATION_MONTHS": 3,
+    "WEIGHT_1M": 1,
+    "WEIGHT_3M": 2,
+    "WEIGHT_6M": 4,
+    "WEIGHT_12M": 3,
+    "MA12_THRESHOLD": 1.0,
+    "GOLD_EXPENSE_MULTIPLIER": 2.0,
+    "ALLOCATION_METHOD": "equal",
+    "MONTHLY_CONTRIBUTION": 23000
+  },
+  "capital_guarantee_fund": {
+    "code": "GUARANTEE",
+    "name": "みずほDC定期預金（1年）",
+    "memo": "元本確保型。全BUY候補ゼロ時の退避先。楽天証券iDeCoで唯一の元本確保商品。"
+  },
+  "_asset_classes": "9資産クラス: 米国株式・先進国株式・新興国株式・国内株式・海外REIT・国内REIT・先進国債券・新興国債券・コモディティ(金)",
+  "_removed": [
+    "JP90C000FHC4 楽天・全世界株式(0.2296%): 全米+先進国でカバー可・重複",
+    "JP90C000CMF4 たわら日経225(0.1836%): TOPIX(0.1760%)より高コスト・銘柄限定",
+    "JP90C0002ZM9 野村J-REIT(1.045%): 三井住友DC日本REIT(0.275%)の4倍コスト・同等運用",
+    "JP90C000DXF9 たわら先進国債券ヘッジあり: 製品一覧に存在しない・廃止",
+    "JP90C000CMG2 たわら国内債券(0.1512%): 提供商品一覧に存在しない(新規購入停止)。代替の明治安田DC日本債券(0.66%)はコスト高すぎてスコアに不利なため国内債券クラスを除外"
+  ],
+  "_pending_isin": [
+    "インデックスファンド海外新興国(EM)株式(0.275%) product_no=0066100011: ISINコード要調査。新興国株式クラスとして追加予定。",
+    "インデックスファンド海外新興国(EM)債券(0.275%) product_no=0066100016: ISINコード要調査。新興国債券クラスとして追加予定。",
+    "楽天・プラス・オールカントリー株式(0.056%) product_no=0066100034: ISINコード要調査。超低コスト全世界株式、追加検討。",
+    "楽天・プラス・S&P500(0.077%) product_no=0066100035: ISINコード要調査。全米株式の代替候補(より低コスト)。"
+  ],
+  "products": [
+    {
+      "code": "JP90C000FHD2",
+      "name": "楽天・全米株式インデックス・ファンド",
+      "category": "us_equity",
+      "expense_ratio": 0.162,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "米国株式(VTI連動)。提供商品一覧で0.162%を確認(2026-03)。"
+    },
+    {
+      "code": "JP90C000CMK4",
+      "name": "たわらノーロード先進国株式",
+      "category": "developed_equity",
+      "expense_ratio": 0.0989,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "先進国株式(日本除く)。提供商品一覧で0.0989%を確認(2026-03)。旧0.216%から大幅値下げ。Core商品。"
+    },
+    {
+      "code": "JP90C00081U4",
+      "name": "三井住友・DCつみたてNISA・日本株インデックスファンド",
+      "category": "domestic_equity",
+      "expense_ratio": 0.176,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "国内株式(TOPIX全銘柄)。提供商品一覧で0.176%を確認(2026-03)。"
+    },
+    {
+      "code": "JP90C000DX82",
+      "name": "三井住友・DC外国リートインデックスファンド",
+      "category": "global_reit",
+      "expense_ratio": 0.297,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "海外REIT(日本除く)。米国5〜6割。提供商品一覧で0.297%を確認(2026-03)。"
+    },
+    {
+      "code": "JP90C000DX74",
+      "name": "三井住友・DC日本リートインデックスファンド",
+      "category": "domestic_reit",
+      "expense_ratio": 0.275,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "国内REIT。J-REITインデックス。提供商品一覧で0.275%を確認(2026-03)。"
+    },
+    {
+      "code": "JP90C000CML2",
+      "name": "たわらノーロード先進国債券",
+      "category": "foreign_bond",
+      "expense_ratio": 0.187,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "先進国債券(為替ノーヘッジ)。円安時に上振れ。提供商品一覧で0.187%を確認(2026-03)。"
+    },
+    {
+      "code": "JP90C0008QL7",
+      "name": "ステートストリート・ゴールドファンド（為替ヘッジあり）",
+      "category": "commodity",
+      "expense_ratio": 0.895,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "金(ゴールド・円ヘッジ)。唯一のコモディティ。提供商品一覧で0.895%を確認(2026-03)。GOLD_EXPENSE_MULTIPLIERで信託報酬ペナルティ2倍適用。"
+    },
+    {
+      "code": "GUARANTEE",
+      "name": "定期預金（元本確保型）",
+      "category": "capital_guarantee",
+      "expense_ratio": 0.0,
+      "redemption_fee": 0.0,
+      "capital_guarantee": true,
+      "holdings_ratio": 0.0,
+      "memo": "みずほDC定期預金（1年）。全BUY候補ゼロ時の退避先。価格データなし・スコアリング対象外。"
+    }
+  ]
+}
