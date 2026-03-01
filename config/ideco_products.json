@@ -19,7 +19,7 @@
     "WEIGHT_12M": 3,
     "MA12_THRESHOLD": 1.0,
     "GOLD_EXPENSE_MULTIPLIER": 2.0,
-    "SATELLITE_EXCLUDE_CATEGORIES": [],
+    "CORE_ABS_MOMENTUM": false,
     "ALLOCATION_METHOD": "equal",
     "MONTHLY_CONTRIBUTION": 23000
   },
@@ -38,11 +38,19 @@
   ],
   "_pending_isin": [
     "インデックスファンド海外新興国(EM)株式(0.275%) product_no=0066100011: ISINコード要調査。新興国株式クラスとして追加予定。",
-    "インデックスファンド海外新興国(EM)債券(0.275%) product_no=0066100016: ISINコード要調査。新興国債券クラスとして追加予定。",
-    "楽天・プラス・オールカントリー株式(0.056%) product_no=0066100034: ISINコード要調査。超低コスト全世界株式、追加検討。",
-    "楽天・プラス・S&P500(0.077%) product_no=0066100035: ISINコード要調査。全米株式の代替候補(より低コスト)。"
+    "インデックスファンド海外新興国(EM)債券(0.275%) product_no=0066100016: ISINコード要調査。新興国債券クラスとして追加予定。"
   ],
   "products": [
+    {
+      "code": "JP90C000Q2U6",
+      "name": "楽天・プラス・S&P500インデックス・ファンド",
+      "category": "us_equity",
+      "expense_ratio": 0.077,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "米国株式(S&P500連動)。2024-01追加。0.077%と楽天全米株式(0.162%)の半コスト。iDeCo最安水準の米国株式。"
+    },
     {
       "code": "JP90C000FHD2",
       "name": "楽天・全米株式インデックス・ファンド",
@@ -51,7 +59,17 @@
       "redemption_fee": 0.0,
       "capital_guarantee": false,
       "holdings_ratio": 0.0,
-      "memo": "米国株式(VTI連動)。提供商品一覧で0.162%を確認(2026-03)。"
+      "memo": "米国株式(VTI連動)。提供商品一覧で0.162%を確認(2026-03)。楽天プラスS&P500(0.077%)の追加により低スコア化する見込み。"
+    },
+    {
+      "code": "JP90C000Q2W2",
+      "name": "楽天・プラス・オールカントリー株式インデックス・ファンド",
+      "category": "global_equity",
+      "expense_ratio": 0.0561,
+      "redemption_fee": 0.0,
+      "capital_guarantee": false,
+      "holdings_ratio": 0.0,
+      "memo": "全世界株式(MSCI ACWI連動・日本含む)。2024-01追加。0.0561%はiDeCo最安水準。Core候補(現Core=たわら先進国株式0.099%より低コストだが全世界カバー)。"
     },
     {
       "code": "JP90C000CMK4",

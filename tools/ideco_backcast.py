@@ -291,19 +291,25 @@ def run_core_satellite_simulation(
     params: dict,
     start: str,
     end: str,
+    core_abs_momentum: bool = False,
 ) -> list:
     """
     Core-Satellite戦略シミュレーション。
 
-    - Core商品は常に CORE_RATIO × 掛金を受け取る
-    - Satellite: 非Core商品の BUY TOP_N が残り (1-CORE_RATIO) を均等分割
-    - Satellite BUYゼロ時: Core が 100% 受け取る
-    - Case A: 非Core保有が2ヶ月連続SELL → Core へスイッチ
+    core_abs_momentum=False（デフォルト）:
+      Core商品は常に CORE_RATIO × 掛金を受け取る（BUY/SELL 不問）
+
+    core_abs_momentum=True:
+      Core が SELL（12M<0 等）のとき → Core 枠を GUARANTEE へ退避
+      Case A: Core が2ヶ月連続SELL かつ残高あり → GUARANTEE へスイッチ
+
+    共通:
+      Satellite: 非Core BUY TOP_N が残り (1-CORE_RATIO) を均等分割
+      Case A: 非Core保有が2ヶ月連続SELL → Core（または GUARANTEE）へスイッチ
     """
     core_code = params.get("CORE_PRODUCT", "JP90C000CMK4")
     core_ratio = params.get("CORE_RATIO", 0.70)
     top_n = params.get("TOP_N", 1)
-    exclude_cats = set(params.get("SATELLITE_EXCLUDE_CATEGORIES", []))
 
     months = month_range(start, end)
     holdings = {p["code"]: 0.0 for p in products}
@@ -328,27 +334,42 @@ def run_core_satellite_simulation(
             fund_scores[p["code"]] = score
         signal_history[signal_month] = dict(fund_signals)
 
-        # Case A: 非Core保有が2ヶ月連続SELL → Coreへスイッチ
+        core_is_buy = fund_signals.get(core_code) == "BUY"
+
+        # Case A: 2ヶ月連続SELL の保有をスイッチ
         past_months = sorted(signal_history.keys())[-2:]
         if len(past_months) == 2:
             for p in products:
                 code = p["code"]
-                if code == core_code:
+                if holdings.get(code, 0) <= 0:
                     continue
-                if holdings.get(code, 0) > 0:
-                    past_sigs = [signal_history[m].get(code, "SELL") for m in past_months]
-                    if all(s == "SELL" for s in past_sigs):
-                        amount = holdings[code]
-                        holdings[code] = 0.0
+                past_sigs = [signal_history[m].get(code, "SELL") for m in past_months]
+                if not all(s == "SELL" for s in past_sigs):
+                    continue
+
+                # CS固定モード: Core は常時保持（Case A スキップ）
+                if code == core_code and not core_abs_momentum:
+                    continue
+
+                amount = holdings[code]
+                holdings[code] = 0.0
+
+                if code == core_code and core_abs_momentum:
+                    # Core が SELL → GUARANTEE へ
+                    holdings["GUARANTEE"] += amount
+                elif code != core_code:
+                    # 非Core → Core（Core BUY時）or GUARANTEE（Core SELL時）
+                    if core_abs_momentum and not core_is_buy:
+                        holdings["GUARANTEE"] += amount
+                    else:
                         holdings[core_code] = holdings.get(core_code, 0) + amount
 
-        # Satellite BUY候補選定（Core除く、除外カテゴリ除く）
+        # Satellite BUY候補選定（Core除く）
         satellite_buys = sorted(
             [
                 p
                 for p in products
                 if p["code"] != core_code
-                and p.get("category", "") not in exclude_cats
                 and fund_signals.get(p["code"]) == "BUY"
                 and fund_scores.get(p["code"]) is not None
             ],
@@ -367,25 +388,32 @@ def run_core_satellite_simulation(
 
         # 掛金配分
         contribution_total += monthly_contribution
+        use_core = not core_abs_momentum or core_is_buy
+
+        if use_core:
+            core_dest = core_code
+        else:
+            core_dest = "GUARANTEE"  # Core SELL → 元本保証へ
+
         if satellite_buys:
             core_amount = monthly_contribution * core_ratio
             sat_amount = monthly_contribution * (1.0 - core_ratio) / len(satellite_buys)
-            holdings[core_code] = holdings.get(core_code, 0) + core_amount
+            holdings[core_dest] = holdings.get(core_dest, 0) + core_amount
             for sat in satellite_buys:
                 holdings[sat["code"]] = holdings.get(sat["code"], 0) + sat_amount
         else:
-            # Satellite BUYなし: Core に全額
-            holdings[core_code] = holdings.get(core_code, 0) + monthly_contribution
+            holdings[core_dest] = holdings.get(core_dest, 0) + monthly_contribution
 
         total_value = sum(holdings.values())
+        sat_codes = [s["code"] for s in satellite_buys]
         history.append(
             {
                 "month": sim_month,
                 "value": total_value,
                 "contribution_total": contribution_total,
                 "gain": total_value - contribution_total,
-                "buy_codes": [core_code]
-                + [s["code"] for s in satellite_buys],
+                "buy_codes": ([core_code] if use_core else ["GUARANTEE"]) + sat_codes,
+                "core_escaped": not use_core,
             }
         )
 
@@ -502,7 +530,8 @@ def year_end_values(history: list) -> dict:
 
 def generate_report(
     old_strategy: list,
-    new_strategy: list,
+    cs_fixed: list,
+    cs_dynamic: list,
     bench_equal: list,
     bench_dev: list,
     bench_us: list,
@@ -512,7 +541,8 @@ def generate_report(
     output_path: Path,
 ) -> None:
     old_stats = compute_stats(old_strategy)
-    new_stats = compute_stats(new_strategy)
+    csf_stats = compute_stats(cs_fixed)
+    csd_stats = compute_stats(cs_dynamic)
     eq_stats = compute_stats(bench_equal)
     dev_stats = compute_stats(bench_dev)
     us_stats = compute_stats(bench_us)
@@ -546,7 +576,8 @@ def generate_report(
 
     lines += [
         row("旧モメンタム（weights 1/2/3/4・MA3>MA6・TOP3・Gold×1）", old_stats),
-        row("**新Core-Satellite（weights 1/2/4/3・TOP1・Gold×2）**", new_stats),
+        row("Core-Satellite 固定（Core常時70%）", csf_stats),
+        row("**Core-Satellite 可変（Core SELL時→元本保証）**", csd_stats),
         row("均等B&H（7本）", eq_stats),
         row("先進国株式のみ", dev_stats),
         row("全米株式のみ", us_stats),
@@ -558,79 +589,51 @@ def generate_report(
         "",
         "## 年次パフォーマンス（年末資産額）",
         "",
-        "| 年 | 旧モメンタム | 新Core-Satellite | 均等B&H | 先進国株 | 全米株式 | 拠出累計 |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| 年 | 旧モメンタム | CS固定 | **CS可変** | 均等B&H | 先進国株 | 全米株式 | 拠出累計 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
     old_ye = year_end_values(old_strategy)
-    new_ye = year_end_values(new_strategy)
+    csf_ye = year_end_values(cs_fixed)
+    csd_ye = year_end_values(cs_dynamic)
     eq_ye = year_end_values(bench_equal)
     dev_ye = year_end_values(bench_dev)
     us_ye = year_end_values(bench_us)
 
-    all_years = sorted(set(list(old_ye.keys()) + list(new_ye.keys())))
+    all_years = sorted(set(list(old_ye.keys()) + list(csf_ye.keys())))
     contrib_by_year = {r["month"][:4]: r["contribution_total"] for r in old_strategy}
 
     for year in all_years:
         contrib = contrib_by_year.get(year, 0)
         lines.append(
-            f"| {year} | {old_ye.get(year, 0):,.0f} | {new_ye.get(year, 0):,.0f} | "
-            f"{eq_ye.get(year, 0):,.0f} | {dev_ye.get(year, 0):,.0f} | "
-            f"{us_ye.get(year, 0):,.0f} | {contrib:,.0f} |"
+            f"| {year} | {old_ye.get(year, 0):,.0f} | {csf_ye.get(year, 0):,.0f} | "
+            f"{csd_ye.get(year, 0):,.0f} | {eq_ye.get(year, 0):,.0f} | "
+            f"{dev_ye.get(year, 0):,.0f} | {us_ye.get(year, 0):,.0f} | {contrib:,.0f} |"
         )
 
     lines += [
         "",
         "---",
         "",
-        "## 月次詳細（新Core-Satellite戦略）",
+        "## 月次詳細（Core-Satellite 可変）",
         "",
-        "| 月 | 資産額 | 利益額 | Core | Satellite |",
+        "| 月 | 資産額 | 利益額 | Core状態 | Satellite |",
         "|---|---:|---:|---|---|",
     ]
 
     core_code = "JP90C000CMK4"
-    for record in new_strategy:
+    for record in cs_dynamic:
         codes = record.get("buy_codes", [])
-        core_name = code_to_name.get(core_code, core_code)[:18]
-        sat_codes = [c for c in codes if c != core_code]
+        escaped = record.get("core_escaped", False)
+        core_label = "退避→元本保証" if escaped else code_to_name.get(core_code, core_code)[:16]
+        sat_codes = [c for c in codes if c not in (core_code, "GUARANTEE")]
         sat_names = " / ".join(code_to_name.get(c, c)[:14] for c in sat_codes)
         if not sat_names:
-            sat_names = "なし（Core 100%）"
+            sat_names = "なし"
         lines.append(
             f"| {record['month']} | {record['value']:,.0f} | "
-            f"{record['gain']:+,.0f} | {core_name} | {sat_names} |"
+            f"{record['gain']:+,.0f} | {core_label} | {sat_names} |"
         )
-
-    # Satellite選択統計
-    sat_counts = {}
-    core_100_count = 0
-    for record in new_strategy:
-        codes = record.get("buy_codes", [])
-        sat_codes = [c for c in codes if c != core_code]
-        if sat_codes:
-            for c in sat_codes:
-                name = code_to_name.get(c, c)
-                sat_counts[name] = sat_counts.get(name, 0) + 1
-        else:
-            core_100_count += 1
-
-    total_months_report = len(new_strategy)
-    lines += [
-        "",
-        "---",
-        "",
-        "## Satellite選択統計",
-        "",
-        f"総月数: {total_months_report}  |  Satellite有り: {total_months_report - core_100_count}ヶ月  |  Core100%: {core_100_count}ヶ月",
-        "",
-        "| Satellite商品 | 選択回数 | 選択率 |",
-        "|---|---:|---:|",
-    ]
-    for name, count in sorted(sat_counts.items(), key=lambda x: -x[1]):
-        lines.append(f"| {name} | {count}回 | {count/total_months_report*100:.1f}% |")
-    if core_100_count > 0:
-        lines.append(f"| （Core 100%） | {core_100_count}回 | {core_100_count/total_months_report*100:.1f}% |")
 
     lines += [
         "",
@@ -638,22 +641,14 @@ def generate_report(
         "",
         "## 戦略パラメータ比較",
         "",
-        "| パラメータ | 旧モメンタム | 新Core-Satellite |",
-        "|---|---|---|",
-        "| スコア重み (1M/3M/6M/12M) | 1/2/3/4 | 1/2/4/3 |",
-        "| MA3>MA6フィルター | あり | なし |",
-        "| TOP_N | 3 | 1（Satellite枠） |",
-        "| Goldペナルティ | 信託報酬×1.0 | 信託報酬×2.0 |",
-        "| Core固定配分 | なし | たわら先進国株式 70% |",
-        "| Satellite配分 | TOP_N均等 | 残り30% |",
-        "",
-        "**変更の狙い**:",
-        "",
-        "1. Core固定（70%）: 先進国株式を常時保有してベータリターンを確保",
-        "2. 6Mウェイト増加（3→4）: 中期モメンタム重視・12M過剰に反応しにくくする",
-        "3. MA3>MA6削除: V字回復時の取り逃しを防止",
-        "4. Goldペナルティ×2: 高信託報酬への過剰選択を抑制",
-        "5. TOP_N=1（Satellite）: 集中投資で決定力を上げる",
+        "| パラメータ | 旧モメンタム | CS固定 | CS可変 |",
+        "|---|---|---|---|",
+        "| スコア重み (1M/3M/6M/12M) | 1/2/3/4 | 1/2/4/3 | 1/2/4/3 |",
+        "| MA3>MA6フィルター | あり | なし | なし |",
+        "| TOP_N | 3 | 1 | 1 |",
+        "| Goldペナルティ | ×1.0 | ×2.0 | ×2.0 |",
+        "| Core配分 | なし | 常時70% | BUY時70%・SELL時→元本保証 |",
+        "| Core SELL時の既存残高 | - | Core維持 | GUARANTEE へスイッチ |",
         "",
         "---",
         "",
@@ -752,13 +747,24 @@ def main():
         end=sim_end,
     )
 
-    logger.info(f"新Core-Satellite戦略: {SIM_START} 〜 {sim_end}")
-    new_history = run_core_satellite_simulation(
+    logger.info(f"Core-Satellite 固定（Core常時70%）: {SIM_START} 〜 {sim_end}")
+    cs_fixed = run_core_satellite_simulation(
         products=products,
         monthly_contribution=monthly_contribution,
         params=new_params,
         start=SIM_START,
         end=sim_end,
+        core_abs_momentum=False,
+    )
+
+    logger.info(f"Core-Satellite 可変（Core SELL時→元本保証）: {SIM_START} 〜 {sim_end}")
+    cs_dynamic = run_core_satellite_simulation(
+        products=products,
+        monthly_contribution=monthly_contribution,
+        params=new_params,
+        start=SIM_START,
+        end=sim_end,
+        core_abs_momentum=True,
     )
 
     logger.info("ベンチマーク: 均等B&H（7本）")
@@ -791,11 +797,12 @@ def main():
     print(f"  iDeCo バックキャスト ({SIM_START} 〜 {sim_end})  総拠出額: {total_contrib:,.0f}円")
     print("=" * 70)
     for label, hist in [
-        ("旧モメンタム", old_history),
-        ("新Core-Satellite", new_history),
-        ("均等B&H（7本）  ", bench_equal),
-        ("先進国株式のみ  ", bench_dev),
-        ("全米株式のみ    ", bench_us),
+        ("旧モメンタム      ", old_history),
+        ("CS固定（Core常時）", cs_fixed),
+        ("CS可変（Core退避）", cs_dynamic),
+        ("均等B&H（7本）    ", bench_equal),
+        ("先進国株式のみ    ", bench_dev),
+        ("全米株式のみ      ", bench_us),
     ]:
         stats = compute_stats(hist)
         print(
@@ -809,7 +816,8 @@ def main():
     output_path = OUTPUT_DIR / "ideco_backcast_202502.md"
     generate_report(
         old_strategy=old_history,
-        new_strategy=new_history,
+        cs_fixed=cs_fixed,
+        cs_dynamic=cs_dynamic,
         bench_equal=bench_equal,
         bench_dev=bench_dev,
         bench_us=bench_us,
