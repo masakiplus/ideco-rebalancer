@@ -1,0 +1,212 @@
+{
+  "_note": "2026-08-22に欠測月を再構成して signal_history へ補完した記録。楽天証券の月次リターン履歴から月末NAV系列を復元し、config の重み・信託報酬でスコアを再計算したもの。run月Mのシグナルは signal_month M-1 のデータで算出。既存の記録済み3ヶ月(2026-03/04/08)27件と完全一致することを確認済み。既存月は上書きしていない。",
+  "backfilled_months": [
+    "2025-08",
+    "2025-09",
+    "2025-10",
+    "2025-11",
+    "2025-12",
+    "2026-01",
+    "2026-02",
+    "2026-05",
+    "2026-06",
+    "2026-07"
+  ],
+  "reconstruction": {
+    "2025-08": {
+      "signal_month": "2025-07",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2025-09": {
+      "signal_month": "2025-08",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2025-10": {
+      "signal_month": "2025-09",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2025-11": {
+      "signal_month": "2025-10",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "SELL",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2025-12": {
+      "signal_month": "2025-11",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2026-01": {
+      "signal_month": "2025-12",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2026-02": {
+      "signal_month": "2026-01",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2026-03": {
+      "signal_month": "2026-02",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2026-04": {
+      "signal_month": "2026-03",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2026-05": {
+      "signal_month": "2026-04",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "BUY",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2026-06": {
+      "signal_month": "2026-05",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "SELL",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "BUY"
+      }
+    },
+    "2026-07": {
+      "signal_month": "2026-06",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "SELL",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "SELL"
+      }
+    },
+    "2026-08": {
+      "signal_month": "2026-07",
+      "signals": {
+        "JP90C000Q2U6": "BUY",
+        "JP90C000FHD2": "BUY",
+        "JP90C000Q2W2": "BUY",
+        "JP90C000FHC4": "BUY",
+        "JP90C000CMK4": "BUY",
+        "JP90C00081U4": "BUY",
+        "JP90C000DX82": "BUY",
+        "JP90C000DX74": "SELL",
+        "JP90C000CML2": "BUY",
+        "JP90C0008QL7": "SELL"
+      }
+    }
+  }
+}

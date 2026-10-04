@@ -382,18 +382,28 @@ class IDeCoScorer:
     # スイッチング判定
     # ----------------------------------------------------------------
 
-    def check_switching_case_a(self, scored_funds: list[dict]) -> list[dict]:
+    def check_switching_case_a(
+        self, scored_funds: list[dict], holdings: dict = None
+    ) -> list[dict]:
         """
         ケースA: CONSECUTIVE_SELL ヶ月連続SELLシグナルの資産を検出する。
 
         signal_history の直近N月分を参照（現在月は含まない）。
+        holdings が指定された場合、保有額が0の商品はスキップする。
         """
         threshold = self.params["CONSECUTIVE_SELL"]
         case_a = []
 
         for fund in scored_funds:
             code = fund["code"]
-            if fund.get("capital_guarantee") or fund.get("holdings_ratio", 0) == 0:
+            if fund.get("capital_guarantee"):
+                continue
+
+            # 保有額チェック: holdings があれば金額ベース、なければ旧来の holdings_ratio
+            if holdings is not None:
+                if holdings.get(code, 0) <= 0:
+                    continue
+            elif fund.get("holdings_ratio", 0) == 0:
                 continue
 
             sorted_months = sorted(self.signal_history.keys(), reverse=True)
@@ -403,10 +413,12 @@ class IDeCoScorer:
             ]
 
             if len(past) >= threshold and all(s == "SELL" for s in past):
+                holding_amount = holdings.get(code, 0) if holdings else 0
                 case_a.append({
                     "code": code,
                     "name": fund["name"],
                     "holdings_ratio": fund.get("holdings_ratio", 0.0),
+                    "holdings_amount": holding_amount,
                     "past_signals": past,
                     "reason": f"直近{threshold}ヶ月連続SELLシグナル（{', '.join(sorted_months[:threshold])}）",
                 })
@@ -414,23 +426,34 @@ class IDeCoScorer:
         return case_a
 
     def check_switching_case_b(
-        self, scored_funds: list[dict], buy_allocation: list[dict]
+        self, scored_funds: list[dict], buy_allocation: list[dict],
+        holdings: dict = None
     ) -> list[dict]:
         """
         ケースB: 目標配分との乖離が DEVIATION_THRESHOLD 以上の資産を検出する。
 
         BUY候補でない商品の目標配分は0%として計算する。
+        holdings が指定された場合、金額ベースで比率を算出する。
         """
         threshold = self.params["DEVIATION_THRESHOLD"]
         target_by_code = {f["code"]: f["new_ratio"] for f in buy_allocation}
         case_b = []
+
+        # 保有比率の算出
+        if holdings:
+            total = sum(holdings.values())
+        else:
+            total = 0
 
         for fund in scored_funds:
             if fund.get("capital_guarantee"):
                 continue
 
             code = fund["code"]
-            current = fund.get("holdings_ratio", 0.0)
+            if holdings and total > 0:
+                current = holdings.get(code, 0) / total
+            else:
+                current = fund.get("holdings_ratio", 0.0)
             target = target_by_code.get(code, 0.0)
             deviation = abs(current - target)
 
@@ -562,6 +585,7 @@ class IDeCoScorer:
         case_b_targets: list[dict],
         output_path: str,
         core_monitor: dict = None,
+        holdings_summary: dict = None,
     ) -> str:
         """月次判定レポートをMarkdown形式で生成する"""
         now = datetime.now()
@@ -590,6 +614,24 @@ class IDeCoScorer:
 
         lines.append(f"スイッチング: {switching_count}件（ケースA: {len(case_a_targets)}件、ケースB: {len(case_b_targets)}件）")
         lines += ["", "---", ""]
+
+        # --- 保有状況 ---
+        if holdings_summary and holdings_summary.get("items"):
+            code_to_name = {f["code"]: f["name"] for f in scored_funds}
+            lines += ["## 現在の保有状況", ""]
+            lines.append(f"更新月: {holdings_summary.get('last_updated', '-')}")
+            lines.append("")
+            lines.append("| 商品名 | 保有額 | 比率 |")
+            lines.append("|---|---:|---:|")
+            for item in holdings_summary["items"]:
+                name = code_to_name.get(item["code"], item["code"])
+                lines.append(
+                    f"| {name} | {item['amount']:,.0f}円 | {item['ratio']*100:.1f}% |"
+                )
+            lines.append(
+                f"| **合計** | **{holdings_summary['total']:,.0f}円** | **100%** |"
+            )
+            lines += ["", "---", ""]
 
         # --- 掛金割当変更 ---
         lines += ["## 掛金割当変更（今月の積立先）", ""]

@@ -2,6 +2,11 @@
 data/signal_history.json
 data/nav_history.json
 data/backcast_cache.json
+data/holdings.json
+data/core_monitor_history*.json
+
+# Notionトークン等
+.env
 
 # 月次レポート（個人の運用結果）
 output/ideco_report_*.md
@@ -22,3 +27,8 @@ __pycache__/
 
 # ログ
 *.log
+data/*.bak_*
+config/*.bak_*
+
+# 突合用の一時入力
+tmp/

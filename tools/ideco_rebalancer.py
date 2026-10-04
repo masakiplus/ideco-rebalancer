@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from ideco_scraper import RakutenIdecoScraper
 from ideco_scorer import IDeCoScorer
+from ideco_holdings import HoldingsManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +50,7 @@ CONFIG_PATH = PROJECT_DIR / "config" / "ideco_products.json"
 SIGNAL_HISTORY_PATH = PROJECT_DIR / "data" / "signal_history.json"
 NAV_HISTORY_PATH = PROJECT_DIR / "data" / "nav_history.json"
 CORE_MONITOR_HISTORY_PATH = PROJECT_DIR / "data" / "core_monitor_history.json"
+HOLDINGS_PATH = PROJECT_DIR / "data" / "holdings.json"
 OUTPUT_DIR = PROJECT_DIR / "output"
 
 
@@ -108,8 +110,11 @@ def print_summary(
     case_a: list[dict],
     case_b: list[dict],
     output_path: Path,
+    holdings_mgr: "HoldingsManager | None" = None,
 ):
     """判定結果サマリーを標準出力に表示する"""
+    code_to_name = {f["code"]: f["name"] for f in scored_funds}
+
     print("\n" + "=" * 60)
     print("iDeCo 月次判定 結果サマリー")
     print("=" * 60)
@@ -135,6 +140,13 @@ def print_summary(
         print(f"\n[スイッチング ケースB] {len(case_b)}件")
         for t in case_b:
             print(f"  - {t['name']}: 乖離{t['deviation']*100:.1f}% {t['direction']}")
+
+    if holdings_mgr and holdings_mgr.is_initialized:
+        summary = holdings_mgr.get_summary()
+        print(f"\n[保有状況] 合計: {summary['total']:,.0f}円")
+        for item in summary["items"]:
+            name = code_to_name.get(item["code"], item["code"])
+            print(f"  {name}: {item['amount']:,.0f}円 ({item['ratio']*100:.1f}%)")
 
     print(f"\nレポート: {output_path}")
     print("=" * 60 + "\n")
@@ -165,6 +177,14 @@ def main():
     parser = argparse.ArgumentParser(description="iDeCo 月次ポートフォリオ判定")
     parser.add_argument("--dry-run", action="store_true", help="スクレイピングなしでテスト実行")
     parser.add_argument("--playwright", action="store_true", help="Playwrightを使用")
+    parser.add_argument(
+        "--initial-value", type=int, default=0,
+        help="初回実行時の総資産額（円）。holdings_ratioに基づいて配分。"
+    )
+    parser.add_argument(
+        "--set-holdings", type=str, default=None,
+        help='保有額を直接指定（JSON形式）。例: \'{"JP90C000CMK4": 500000, "JP90C0008QL7": 200000}\''
+    )
     args = parser.parse_args()
 
     logger.info("=== iDeCo 月次判定 開始 ===")
@@ -219,14 +239,48 @@ def main():
     # 4b. Core候補モニタリング
     core_monitor = scorer.check_core_candidates(scored_funds, core_monitor_history)
 
-    # 5. スイッチング判定
-    case_a = scorer.check_switching_case_a(scored_funds)
+    # 5. 保有資産管理
+    holdings_mgr = HoldingsManager(HOLDINGS_PATH)
+    current_navs = {f["code"]: f.get("nav") for f in scored_funds if f.get("nav") is not None}
+
+    # 初期化（--set-holdings または --initial-value）
+    if args.set_holdings:
+        amounts = json.loads(args.set_holdings)
+        holdings_mgr.initialize(amounts, current_navs)
+        holdings_mgr.save()
+        logger.info("--set-holdings で保有額を設定しました")
+    elif args.initial_value > 0 and not holdings_mgr.is_initialized:
+        holdings_mgr.initialize_from_ratios(
+            args.initial_value, config["products"], current_navs
+        )
+        holdings_mgr.save()
+        logger.info(f"--initial-value で初期化: {args.initial_value:,}円")
+
+    # 保有がある場合: NAV変動反映 → 掛金追加 → スイッチング
+    if holdings_mgr.is_initialized and not args.dry_run:
+        # NAV変動を反映
+        holdings_mgr.apply_nav_changes(current_navs)
+
+        # 掛金追加
+        monthly = config["parameters"].get("MONTHLY_CONTRIBUTION", 23000)
+        holdings_mgr.add_contribution(buy_allocation, monthly)
+
+    # 5b. スイッチング判定（保有額を考慮）
+    case_a = scorer.check_switching_case_a(scored_funds, holdings_mgr.holdings)
     # Core-Satelliteモードでは Case B 不使用
     # （全米株式などレガシー保有を誤って削減対象にしてしまうため）
     if strategy_mode == "core_satellite":
         case_b = []
     else:
-        case_b = scorer.check_switching_case_b(scored_funds, buy_allocation)
+        case_b = scorer.check_switching_case_b(scored_funds, buy_allocation, holdings_mgr.holdings)
+
+    # スイッチング実行（保有に反映）
+    if holdings_mgr.is_initialized and not args.dry_run:
+        if case_a:
+            core_code = config["parameters"].get("CORE_PRODUCT", "JP90C000CMK4")
+            holdings_mgr.apply_switching(case_a, core_code)
+        holdings_mgr.update_navs(current_navs)
+        holdings_mgr.save()
 
     # 6. 履歴更新・保存
     if not args.dry_run:
@@ -249,13 +303,15 @@ def main():
     year_month = datetime.now().strftime("%Y%m")
     output_path = OUTPUT_DIR / f"ideco_report_{year_month}.md"
 
+    holdings_summary = holdings_mgr.get_summary() if holdings_mgr.is_initialized else None
     scorer.generate_report(
         scored_funds, buy_candidates, buy_allocation, case_a, case_b, str(output_path),
         core_monitor=core_monitor,
+        holdings_summary=holdings_summary,
     )
 
     # 8. サマリー表示
-    print_summary(scored_funds, buy_allocation, case_a, case_b, output_path)
+    print_summary(scored_funds, buy_allocation, case_a, case_b, output_path, holdings_mgr)
 
     logger.info("=== iDeCo 月次判定 完了 ===")
 
